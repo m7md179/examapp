@@ -1,0 +1,3 @@
+Question,Option 1,Option 2,Option 3,Option 4,Correct Answer
+What is the main purpose of association rule mining?,To find patterns in a set of transactions,To generate frequent itemsets,To calculate support and confidence,All of the above,All of the above
+Which algorithm is used to reduce the number of candidates in frequent itemset generation?,Brute-force approach,Apriori principle,DHP algorithm,Vertical-based mining,Apriori principle
