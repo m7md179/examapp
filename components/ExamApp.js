@@ -1,22 +1,18 @@
-// components/ExamApp.js
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 
-const ExamApp = ({ questions = [] }) => {
+const ExamApp = ({ questions }) => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [showResults, setShowResults] = useState(false);
 
-  useEffect(() => {
-    console.log("ExamApp mounted with questions:", questions);
-  }, [questions]);
   const handleAnswerSelect = (questionId, answer) => {
-    setSelectedAnswers({ ...selectedAnswers, [questionId]: answer });
+    setSelectedAnswers(prev => ({ ...prev, [questionId]: answer }));
   };
 
   const handleSubmit = () => {
@@ -32,25 +28,6 @@ const ExamApp = ({ questions = [] }) => {
     });
     return score;
   };
-
-  if (questions.length === 0) {
-    return (
-      <Card className="w-full max-w-2xl mx-auto mt-8">
-        <CardHeader>
-          <CardTitle>No Questions Available</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p>There are currently no questions in the database. This could be due to:</p>
-          <ul className="list-disc list-inside mt-2">
-            <li>The exam_questions table being empty</li>
-            <li>Issues with database permissions</li>
-            <li>Network connectivity problems</li>
-          </ul>
-          <p className="mt-4">Please contact the administrator or check the database configuration.</p>
-        </CardContent>
-      </Card>
-    );
-  }
 
   if (showResults) {
     const score = calculateScore();
