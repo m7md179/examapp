@@ -1,3 +1,5 @@
+// app/exam/page.js
+
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import ExamApp from '../../components/ExamApp'

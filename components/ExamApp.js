@@ -1,5 +1,6 @@
-'use client';
+// components/ExamApp.js
 
+'use client'
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,18 +12,20 @@ import { Input } from './ui/input';
 
 const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
   const [selectedMajor, setSelectedMajor] = useState(null);
-  const [selectedSubjectType, setSelectedSubjectType] = useState(null);
+  const [isMandatory, setIsMandatory] = useState(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
-  const [numberOfQuestions, setNumberOfQuestions] = useState(10); // Default number of questions
+  const [numberOfQuestions, setNumberOfQuestions] = useState(10);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [showResults, setShowResults] = useState(false);
   const [showReview, setShowReview] = useState(false);
-  const [examStarted, setExamStarted] = useState(false); // State to manage exam start
+  const [examStarted, setExamStarted] = useState(false);
+  const [examQuestions, setExamQuestions] = useState([]);
 
-  // Filter subjects based on selected major and subject type
+  // Filter subjects based on selected major and mandatory/optional status
   const filteredSubjects = subjects.filter(subject => 
-    subject.major_id === selectedMajor && subject.subject_type_id === selectedSubjectType
+    subject.major_id === selectedMajor && 
+    subjectTypes.find(st => st.id === subject.subject_type_id)?.is_mandatory === isMandatory
   );
 
   // Filter questions based on the selected subject
@@ -32,7 +35,7 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
     return shuffled.slice(0, Math.min(numberOfQuestions, shuffled.length));
   };
 
-  const [examQuestions, setExamQuestions] = useState([]);
+  
 
   useEffect(() => {
     if (selectedSubject) {
@@ -128,25 +131,21 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
           </Select>
           
           <Select 
-            onValueChange={(value) => setSelectedSubjectType(parseInt(value))}
+            onValueChange={(value) => setIsMandatory(value === 'true')}
             disabled={selectedMajor === null}
           >
             <SelectTrigger className="w-full mb-4">
               <SelectValue placeholder="Select Subject Type" />
             </SelectTrigger>
             <SelectContent>
-              {subjectTypes.map(type => (
-                <SelectItem key={type.id} value={type.id.toString()}>
-                  {type.is_university ? 'University ' : 'Major '}
-                  {type.is_mandatory ? 'Mandatory' : 'Optional'}
-                </SelectItem>
-              ))}
+              <SelectItem value="true">Mandatory</SelectItem>
+              <SelectItem value="false">Optional</SelectItem>
             </SelectContent>
           </Select>
           
           <Select 
             onValueChange={(value) => setSelectedSubject(parseInt(value))}
-            disabled={selectedSubjectType === null || filteredSubjects.length === 0}
+            disabled={isMandatory === null || filteredSubjects.length === 0}
           >
             <SelectTrigger className="w-full mb-4">
               <SelectValue placeholder="Select Subject" />
@@ -162,8 +161,8 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
             type="number"
             value={numberOfQuestions}
             onChange={(e) => setNumberOfQuestions(parseInt(e.target.value))}
-            min="1"
-            max={questions.filter(q => q.subject_id === selectedSubject).length}
+            min="5"
+            max="50"
             className="mb-4"
             placeholder="Number of questions"
             disabled={!selectedSubject}
