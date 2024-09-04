@@ -1,5 +1,7 @@
 // components/ExamApp.js
 
+// components/ExamApp.js
+
 'use client'
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,8 +11,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
 import { Input } from './ui/input';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox'; // Fixed import
 
-const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
+const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions }) => {
   const [selectedMajor, setSelectedMajor] = useState(null);
   const [isMandatory, setIsMandatory] = useState(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
@@ -21,6 +25,13 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
   const [showReview, setShowReview] = useState(false);
   const [examStarted, setExamStarted] = useState(false);
   const [examQuestions, setExamQuestions] = useState([]);
+  const [questionType, setQuestionType] = useState('normal');
+  const [error, setError] = useState(null);
+  const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+  const [showFinishConfirmation, setShowFinishConfirmation] = useState(false);
+  const [examMode, setExamMode] = useState(null);
+  const [selectedChapters, setSelectedChapters] = useState([]);
+  const [selectedExamType, setSelectedExamType] = useState(null);
 
   // Filter subjects based on selected major and mandatory/optional status
   const filteredSubjects = subjects.filter(subject => 
@@ -28,21 +39,58 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
     subjectTypes.find(st => st.id === subject.subject_type_id)?.is_mandatory === isMandatory
   );
 
-  // Filter questions based on the selected subject
   const getShuffledQuestions = () => {
-    const filtered = questions.filter(question => question.subject_id === selectedSubject);
+    const questionPool = questionType === 'normal' ? questions : suggestedQuestions;
+
+    if (!Array.isArray(questionPool) || questionPool.length === 0) {
+      setError(`No ${questionType} questions available. Please try a different question type or contact the administrator.`);
+      return [];
+    }
+
+    let filtered = questionPool.filter(question => question.subject_id === selectedSubject);
+
+    if (questionType === 'normal' && selectedChapters.length > 0) {
+      filtered = filtered.filter(question => selectedChapters.includes(question.chapter));
+    }
+
+    if (questionType === 'suggested' && selectedExamType && selectedExamType !== 'all') {
+      filtered = filtered.filter(question => question.exam_type === selectedExamType);
+    }
+
+    if (filtered.length === 0) {
+      setError(`No ${questionType} questions available for the selected criteria. Please try different options.`);
+      return [];
+    }
+
     const shuffled = [...filtered].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, Math.min(numberOfQuestions, shuffled.length));
   };
 
-  
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (examStarted && !showResults) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [examStarted, showResults]);
 
   useEffect(() => {
-    if (selectedSubject) {
-      setExamQuestions(getShuffledQuestions());
-      setCurrentQuestion(0); // Reset to the first question
+    if (selectedSubject && questionType) {
+      const shuffledQuestions = getShuffledQuestions();
+      setExamQuestions(shuffledQuestions);
+      setCurrentQuestion(0);
+      if (shuffledQuestions.length > 0) {
+        setError(null);
+      }
     }
-  }, [selectedSubject, numberOfQuestions]);
+  }, [selectedSubject, numberOfQuestions, questionType, selectedChapters, selectedExamType]);
 
   const handleAnswerSelect = (questionId, answer) => {
     setSelectedAnswers(prev => ({ ...prev, [questionId]: answer }));
@@ -60,6 +108,45 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
       }
     });
     return score;
+  };
+
+  const handleFinishExam = () => {
+    setShowFinishConfirmation(true);
+  };
+
+  const confirmFinishExam = () => {
+    setShowFinishConfirmation(false);
+    handleSubmit();
+  };
+
+  const getChapters = () => {
+    if (!selectedSubject) return [];
+    const subjectQuestions = questions.filter(q => q.subject_id === selectedSubject);
+    return [...new Set(subjectQuestions.map(q => q.chapter))];
+  };
+
+  const getExamTypes = () => {
+    if (!selectedSubject) return [];
+    const subjectSuggestedQuestions = suggestedQuestions.filter(q => q.subject_id === selectedSubject);
+    return [...new Set(subjectSuggestedQuestions.map(q => q.exam_type))];
+  };
+  
+  const renderAvailableOptions = (question) => {
+    const options = ['option_1', 'option_2', 'option_3', 'option_4'].filter(option => question[option]);
+    return options.map((option, index) => (
+      <div key={index} className="flex items-center space-x-2 mb-2">
+        <RadioGroupItem value={question[option]} id={`option-${index}`} />
+        <Label htmlFor={`option-${index}`}>{question[option]}</Label>
+      </div>
+    ));
+  };
+
+  const handleChapterChange = (chapter) => {
+    setSelectedChapters(prev => 
+      prev.includes(chapter) 
+        ? prev.filter(ch => ch !== chapter)
+        : [...prev, chapter]
+    );
   };
 
   if (showReview) {
@@ -112,6 +199,22 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
     );
   }
 
+  if (!examMode) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto mt-8">
+        <CardHeader>
+          <CardTitle>Select Exam Mode</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex justify-center space-x-4">
+            <Button onClick={() => setExamMode('one-way')}>One-Way Exam</Button>
+            <Button onClick={() => setExamMode('two-way')}>Two-Way Exam</Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (!examStarted) {
     return (
       <Card className="w-full max-w-2xl mx-auto mt-8">
@@ -119,6 +222,8 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
           <CardTitle>Select Exam Parameters</CardTitle>
         </CardHeader>
         <CardContent>
+          <p className="mb-4">Exam Mode: {examMode === 'one-way' ? 'One-Way' : 'Two-Way'}</p>
+          
           <Select onValueChange={(value) => setSelectedMajor(parseInt(value))}>
             <SelectTrigger className="w-full mb-4">
               <SelectValue placeholder="Select Major" />
@@ -157,6 +262,60 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
             </SelectContent>
           </Select>
 
+          <Select 
+            onValueChange={(value) => {
+              setQuestionType(value);
+              setSelectedChapters([]);
+              setSelectedExamType(null);
+            }} 
+            disabled={selectedSubject === null}
+          >
+            <SelectTrigger className="w-full mb-4">
+              <SelectValue placeholder="Select Question Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="normal">Normal Questions</SelectItem>
+              <SelectItem value="suggested" disabled={suggestedQuestions.length === 0}>
+                Suggested Questions {suggestedQuestions.length === 0 && '(Not Available)'}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
+          {questionType === 'normal' && (
+            <div className="mb-4">
+              <Label className="mb-2 block">Select Chapters</Label>
+              {getChapters().map(chapter => (
+                <div key={chapter} className="flex items-center mb-2">
+                  <Checkbox
+                    id={`chapter-${chapter}`}
+                    checked={selectedChapters.includes(chapter)}
+                    onCheckedChange={() => handleChapterChange(chapter)}
+                  />
+                  <Label htmlFor={`chapter-${chapter}`} className="ml-2">
+                    {chapter}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {questionType === 'suggested' && (
+            <Select 
+              onValueChange={(value) => setSelectedExamType(value)} 
+              disabled={!selectedSubject}
+            >
+              <SelectTrigger className="w-full mb-4">
+                <SelectValue placeholder="Select Exam Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Exam Types</SelectItem>
+                {getExamTypes().map(examType => (
+                  <SelectItem key={examType} value={examType}>{examType}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
           <Input
             type="number"
             value={numberOfQuestions}
@@ -167,10 +326,10 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
             placeholder="Number of questions"
             disabled={!selectedSubject}
           />
-          
+
           <Button 
             onClick={() => setExamStarted(true)} 
-            disabled={!selectedSubject}
+            disabled={!selectedSubject || !questionType || (questionType === 'normal' && selectedChapters.length === 0)}
           >
             Start Exam
           </Button>
@@ -182,41 +341,43 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
   const question = examQuestions[currentQuestion];
 
   return (
-    <Card className="w-full max-w-2xl mx-auto mt-8">
-      <CardHeader>
-        <CardTitle>Question {currentQuestion + 1} of {examQuestions.length}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {question ? (
-          <>
-            <p className="text-lg mb-4">{question.question}</p>
-            <RadioGroup
-              value={selectedAnswers[question.id] || ''}
-              onValueChange={(value) => handleAnswerSelect(question.id, value)}
-            >
-              {['option_1', 'option_2', 'option_3', 'option_4'].map((option, index) => (
-                <div key={index} className="flex items-center space-x-2 mb-2">
-                  <RadioGroupItem value={question[option]} id={`option-${index}`} />
-                  <Label htmlFor={`option-${index}`}>{question[option]}</Label>
-                </div>
-              ))}
-            </RadioGroup>
-            <div className="flex justify-between mt-6">
-              <Button
-                onClick={() => setCurrentQuestion(currentQuestion - 1)}
-                disabled={currentQuestion === 0}
+    <>
+      <Card className="w-full max-w-2xl mx-auto mt-8">
+        <CardHeader>
+          <CardTitle>Question {currentQuestion + 1} of {examQuestions.length}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {question ? (
+            <>
+              <p className="text-lg mb-4">{question.question}</p>
+              {questionType === 'normal' && (
+                <p className="text-sm text-gray-500 mb-2">Chapter: {question.chapter}</p>
+              )}
+              {questionType === 'suggested' && (
+                <p className="text-sm text-gray-500 mb-2">Exam Type: {question.exam_type}</p>
+              )}
+              <RadioGroup
+                value={selectedAnswers[question.id] || ''}
+                onValueChange={(value) => handleAnswerSelect(question.id, value)}
               >
-                Previous
-              </Button>
-              {currentQuestion === examQuestions.length - 1 ? (
-                <Button onClick={handleSubmit}>Submit</Button>
-              ) : (
+                {renderAvailableOptions(question)}
+              </RadioGroup>
+              <div className="flex justify-between mt-6">
                 <Button
-                  onClick={() => setCurrentQuestion(currentQuestion + 1)}
-                  disabled={currentQuestion === examQuestions.length - 1}
+                  onClick={() => setShowExitConfirmation(true)}
+                  variant="outline"
                 >
-                  Next
+                  Exit Exam
                 </Button>
+                {currentQuestion === examQuestions.length - 1 ? (
+                  <Button onClick={handleFinishExam}>Finish Exam</Button>
+                ) : (
+                  <Button
+                    onClick={() => setCurrentQuestion(currentQuestion + 1)}
+                    disabled={examMode === 'one-way' && currentQuestion > 0}
+                  >
+                    Next
+                  </Button>
               )}
             </div>
           </>
@@ -225,6 +386,7 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions }) => {
         )}
       </CardContent>
     </Card>
+    </>
   );
 }
 
