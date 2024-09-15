@@ -1,7 +1,5 @@
 // components/ExamApp.js
 
-// components/ExamApp.js
-
 'use client'
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import Link from 'next/link';
 import { Input } from './ui/input';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Checkbox } from '@/components/ui/checkbox'; // Fixed import
+import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions }) => {
   const [selectedMajor, setSelectedMajor] = useState(null);
@@ -25,6 +25,7 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
   const [showReview, setShowReview] = useState(false);
   const [examStarted, setExamStarted] = useState(false);
   const [examQuestions, setExamQuestions] = useState([]);
+  const [selectedSuggestedExamTypes, setSelectedSuggestedExamTypes] = useState([])
   const [questionType, setQuestionType] = useState('normal');
   const [error, setError] = useState(null);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
@@ -32,6 +33,10 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
   const [examMode, setExamMode] = useState(null);
   const [selectedChapters, setSelectedChapters] = useState([]);
   const [selectedExamType, setSelectedExamType] = useState(null);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [reportType, setReportType] = useState('');
+  const [reportDescription, setReportDescription] = useState('');
+  const supabase = createClientComponentClient();
 
   // Filter subjects based on selected major and mandatory/optional status
   const filteredSubjects = subjects.filter(subject => 
@@ -53,8 +58,8 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
       filtered = filtered.filter(question => selectedChapters.includes(question.chapter));
     }
 
-    if (questionType === 'suggested' && selectedExamType && selectedExamType !== 'all') {
-      filtered = filtered.filter(question => question.exam_type === selectedExamType);
+    if (questionType === 'suggested' && selectedSuggestedExamTypes.length > 0) {
+      filtered = filtered.filter(question => selectedSuggestedExamTypes.includes(question.exam_type));
     }
 
     if (filtered.length === 0) {
@@ -64,6 +69,30 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
 
     const shuffled = [...filtered].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, Math.min(numberOfQuestions, shuffled.length));
+  };
+  const handleReportQuestion = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert('You must be logged in to report a question.');
+      return;
+    }
+
+    const { error } = await supabase.from('question_reports').insert({
+      question_id: question.id,
+      user_id: user.id,
+      report_type: reportType,
+      description: reportDescription
+    });
+
+    if (error) {
+      console.error('Error reporting question:', error);
+      alert('There was an error reporting the question. Please try again.');
+    } else {
+      alert('Question reported successfully. Thank you for your feedback.');
+      setShowReportDialog(false);
+      setReportType('');
+      setReportDescription('');
+    }
   };
 
   useEffect(() => {
@@ -90,7 +119,7 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
         setError(null);
       }
     }
-  }, [selectedSubject, numberOfQuestions, questionType, selectedChapters, selectedExamType]);
+  }, [selectedSubject, numberOfQuestions, questionType, selectedChapters, selectedSuggestedExamTypes]);
 
   const handleAnswerSelect = (questionId, answer) => {
     setSelectedAnswers(prev => ({ ...prev, [questionId]: answer }));
@@ -131,6 +160,13 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
     return [...new Set(subjectSuggestedQuestions.map(q => q.exam_type))];
   };
   
+  const handleSuggestedExamTypeChange = (examType) => {
+    setSelectedSuggestedExamTypes(prev => 
+      prev.includes(examType) 
+        ? prev.filter(type => type !== examType)
+        : [...prev, examType]
+    );
+  };
   const renderAvailableOptions = (question) => {
     const options = ['option_1', 'option_2', 'option_3', 'option_4'].filter(option => question[option]);
     return options.map((option, index) => (
@@ -300,20 +336,21 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
           )}
 
           {questionType === 'suggested' && (
-            <Select 
-              onValueChange={(value) => setSelectedExamType(value)} 
-              disabled={!selectedSubject}
-            >
-              <SelectTrigger className="w-full mb-4">
-                <SelectValue placeholder="Select Exam Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Exam Types</SelectItem>
-                {getExamTypes().map(examType => (
-                  <SelectItem key={examType} value={examType}>{examType}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="mb-4">
+              <Label className="mb-2 block">Select Exam Types</Label>
+              {getExamTypes().map(examType => (
+                <div key={examType} className="flex items-center mb-2">
+                  <Checkbox
+                    id={`examType-${examType}`}
+                    checked={selectedSuggestedExamTypes.includes(examType)}
+                    onCheckedChange={() => handleSuggestedExamTypeChange(examType)}
+                  />
+                  <Label htmlFor={`examType-${examType}`} className="ml-2">
+                    {examType}
+                  </Label>
+                </div>
+              ))}
+            </div>
           )}
 
           <Input
@@ -329,7 +366,9 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
 
           <Button 
             onClick={() => setExamStarted(true)} 
-            disabled={!selectedSubject || !questionType || (questionType === 'normal' && selectedChapters.length === 0)}
+            disabled={!selectedSubject || !questionType || 
+              (questionType === 'normal' && selectedChapters.length === 0) ||
+              (questionType === 'suggested' && selectedSuggestedExamTypes.length === 0)}
           >
             Start Exam
           </Button>
@@ -342,14 +381,21 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
 
   return (
     <>
-      <Card className="w-full max-w-2xl mx-auto mt-8">
-        <CardHeader>
+      <Card className="w-full max-w-2xl mx-auto mt-8 relative">
+        <CardHeader className="pb-0">
           <CardTitle>Question {currentQuestion + 1} of {examQuestions.length}</CardTitle>
+          <Button
+            onClick={() => setShowReportDialog(true)}
+            variant="outline"
+            className="absolute top-3 right-4 border-red-500 text-red-500 hover:bg-red-100"
+          >
+            Report Question
+          </Button>
         </CardHeader>
         <CardContent>
           {question ? (
             <>
-              <p className="text-lg mb-4">{question.question}</p>
+              <p className="text-lg my-4">{question.question}</p>
               {questionType === 'normal' && (
                 <p className="text-sm text-gray-500 mb-2">Chapter: {question.chapter}</p>
               )}
@@ -374,20 +420,90 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
                 ) : (
                   <Button
                     onClick={() => setCurrentQuestion(currentQuestion + 1)}
-                    disabled={examMode === 'one-way' && currentQuestion > 0}
+                    disabled={examMode === 'one-way' && !selectedAnswers[question.id]}
                   >
                     Next
                   </Button>
-              )}
-            </div>
-          </>
-        ) : (
-          <p>No questions available for the selected subject.</p>
-        )}
-      </CardContent>
-    </Card>
+                )}
+              </div>
+            </>
+          ) : (
+            <p>No questions available for the selected subject.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <AlertDialog open={showExitConfirmation} onOpenChange={setShowExitConfirmation}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to exit the exam?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your progress will be lost if you exit now.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              setExamStarted(false);
+              setShowExitConfirmation(false);
+              setSelectedAnswers({});
+              setCurrentQuestion(0);
+            }}>
+              Exit Exam
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showFinishConfirmation} onOpenChange={setShowFinishConfirmation}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to finish the exam?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You won't be able to change your answers after finishing.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmFinishExam}>
+              Finish Exam
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showReportDialog} onOpenChange={setShowReportDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Report Question</AlertDialogTitle>
+            <AlertDialogDescription>
+              Please select the issue with this question and provide any additional details.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Select onValueChange={setReportType} value={reportType}>
+            <SelectTrigger className="w-full mb-4">
+              <SelectValue placeholder="Select issue type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="question_wrong">The question is wrong</SelectItem>
+              <SelectItem value="options_wrong">The options are wrong</SelectItem>
+              <SelectItem value="other">Other</SelectItem>
+            </SelectContent>
+          </Select>
+          <Textarea
+            placeholder="Provide additional details about the issue"
+            value={reportDescription}
+            onChange={(e) => setReportDescription(e.target.value)}
+            className="mb-4"
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReportQuestion}>Submit Report</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
-}
+};
 
 export default ExamApp;
