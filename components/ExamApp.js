@@ -7,12 +7,12 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import Link from 'next/link';
 import { Input } from './ui/input';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Progress } from '@/components/ui/progress';
 
 const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions }) => {
   const [selectedMajor, setSelectedMajor] = useState(null);
@@ -22,23 +22,21 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [showResults, setShowResults] = useState(false);
-  const [showReview, setShowReview] = useState(false);
   const [examStarted, setExamStarted] = useState(false);
   const [examQuestions, setExamQuestions] = useState([]);
-  const [selectedSuggestedExamTypes, setSelectedSuggestedExamTypes] = useState([])
+  const [selectedSuggestedExamTypes, setSelectedSuggestedExamTypes] = useState([]);
   const [questionType, setQuestionType] = useState('normal');
   const [error, setError] = useState(null);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [showFinishConfirmation, setShowFinishConfirmation] = useState(false);
   const [examMode, setExamMode] = useState(null);
   const [selectedChapters, setSelectedChapters] = useState([]);
-  const [selectedExamType, setSelectedExamType] = useState(null);
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [reportType, setReportType] = useState('');
   const [reportDescription, setReportDescription] = useState('');
-  const supabase = createClientComponentClient();
+  const [reportedQuestionId, setReportedQuestionId] = useState(null);
+  const [reportError, setReportError] = useState(null);
 
-  // Filter subjects based on selected major and mandatory/optional status
   const filteredSubjects = subjects.filter(subject => 
     subject.major_id === selectedMajor && 
     subjectTypes.find(st => st.id === subject.subject_type_id)?.is_mandatory === isMandatory
@@ -70,45 +68,52 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
     const shuffled = [...filtered].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, Math.min(numberOfQuestions, shuffled.length));
   };
+
   const handleReportQuestion = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      alert('You must be logged in to report a question.');
+    setReportError(null);
+    const supabase = createClientComponentClient();
+    
+    if (!reportType || !reportDescription || reportedQuestionId === null) {
+      setReportError('Please provide a report type and description of the issue.');
       return;
     }
 
-    const { error } = await supabase.from('question_reports').insert({
-      question_id: question.id,
-      user_id: user.id,
+    let reportData = {
       report_type: reportType,
-      description: reportDescription
-    });
+      description: reportDescription,
+      question_type: questionType,
+      created_at: new Date().toISOString()
+    };
 
-    if (error) {
-      console.error('Error reporting question:', error);
-      alert('There was an error reporting the question. Please try again.');
+    if (questionType === 'normal') {
+      reportData.question_id = reportedQuestionId;
+    } else if (questionType === 'suggested') {
+      reportData.suggested_question_id = reportedQuestionId;
     } else {
+      setReportError('Invalid question type');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.from('question_reports').insert(reportData);
+
+      if (error) throw error;
+
       alert('Question reported successfully. Thank you for your feedback.');
       setShowReportDialog(false);
-      setReportType('');
       setReportDescription('');
+      setReportedQuestionId(null);
+      setReportType('');
+    } catch (error) {
+      console.error('Error reporting question:', error);
+      setReportError(`Error reporting question: ${error.message}`);
     }
   };
 
-  useEffect(() => {
-    const handleBeforeUnload = (e) => {
-      if (examStarted && !showResults) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [examStarted, showResults]);
+  const openReportDialog = (questionId) => {
+    setReportedQuestionId(questionId);
+    setShowReportDialog(true);
+  };
 
   useEffect(() => {
     if (selectedSubject && questionType) {
@@ -167,6 +172,15 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
         : [...prev, examType]
     );
   };
+
+  const handleChapterChange = (chapter) => {
+    setSelectedChapters(prev => 
+      prev.includes(chapter) 
+        ? prev.filter(ch => ch !== chapter)
+        : [...prev, chapter]
+    );
+  };
+
   const renderAvailableOptions = (question) => {
     const options = ['option_1', 'option_2', 'option_3', 'option_4'].filter(option => question[option]);
     return options.map((option, index) => (
@@ -177,77 +191,89 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
     ));
   };
 
-  const handleChapterChange = (chapter) => {
-    setSelectedChapters(prev => 
-      prev.includes(chapter) 
-        ? prev.filter(ch => ch !== chapter)
-        : [...prev, chapter]
-    );
-  };
-
-  if (showReview) {
-    return (
-      <Card className="w-full max-w-2xl mx-auto mt-8">
-        <CardHeader>
-          <CardTitle>Exam Review</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {examQuestions.map((question, index) => (
-            <div key={question.id} className="mb-6">
-              <p className="text-lg font-semibold mb-2">Question {index + 1}: {question.question}</p>
-              <p className={`mb-1 ${selectedAnswers[question.id] === question.correct_answer ? 'text-green-600' : 'text-red-600'}`}>
-                Your answer: {selectedAnswers[question.id]}
-              </p>
-              {selectedAnswers[question.id] !== question.correct_answer && (
-                <p className="text-green-600">Correct answer: {question.correct_answer}</p>
-              )}
-            </div>
-          ))}
-          <Button onClick={() => setShowReview(false)} className="mt-4">
-            Back to Results
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
   if (showResults) {
     const score = calculateScore();
     return (
+      <>
       <Card className="w-full max-w-2xl mx-auto mt-8">
         <CardHeader>
           <CardTitle>Exam Results</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-lg font-semibold">
+          <p className="text-lg font-semibold mb-4">
             Your score: {score} out of {examQuestions.length}
           </p>
-          <Button onClick={() => setShowReview(true)} className="mt-4 mr-4">
-            Review Answers
+          <Progress value={(score / examQuestions.length) * 100} className="mb-6" />
+          {examQuestions.map((question, index) => (
+            <div key={question.id} className="mb-6 p-4 border rounded-lg">
+              <p className="text-lg font-semibold mb-2">Question {index + 1}: {question.question}</p>
+              <p className={`mb-1 ${selectedAnswers[question.id] === question.correct_answer ? 'text-green-600' : 'text-red-600'}`}>
+                Your answer: {selectedAnswers[question.id]}
+              </p>
+              <p className="text-green-600 mb-2">Correct answer: {question.correct_answer}</p>
+              <Button 
+                onClick={() => openReportDialog(question.id)} 
+                variant="outline" 
+                size="sm"
+                className="mt-2"
+              >
+                Report Wrong Answer
+              </Button>
+            </div>
+          ))}
+          <Button onClick={() => {
+            setShowResults(false);
+            setExamStarted(false);
+            setSelectedAnswers({});
+            setCurrentQuestion(0);
+          }} className="mt-4">
+            Start New Exam
           </Button>
-          <Link href="/">
-            <Button onClick={() => setShowResults(false)} className="mt-4">
-              Start New Exam
-            </Button>
-          </Link>
         </CardContent>
       </Card>
-    );
+      <AlertDialog open={showReportDialog} onOpenChange={(open) => {
+  if (!open) {
+    setReportDescription('');
+    setReportedQuestionId(null);
+    setReportError(null);
+    setReportType('');
   }
-
-  if (!examMode) {
-    return (
-      <Card className="w-full max-w-2xl mx-auto mt-8">
-        <CardHeader>
-          <CardTitle>Select Exam Mode</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex justify-center space-x-4">
-            <Button onClick={() => setExamMode('one-way')}>One-Way Exam</Button>
-            <Button onClick={() => setExamMode('two-way')}>Two-Way Exam</Button>
-          </div>
-        </CardContent>
-      </Card>
+  setShowReportDialog(open);
+}}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Report Wrong Answer</AlertDialogTitle>
+      <AlertDialogDescription>
+        Please provide details about why the answer is wrong.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <Select onValueChange={(value) => setReportType(value)}>
+      <SelectTrigger className="w-full mb-4">
+        <SelectValue placeholder="Select issue type" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="wrong_answer">Wrong Answer</SelectItem>
+      </SelectContent>
+    </Select>
+    <Textarea
+      placeholder="Describe why the answer is wrong"
+      value={reportDescription}
+      onChange={(e) => setReportDescription(e.target.value)}
+      className="mb-4"
+    />
+    {reportError && <p className="text-red-500 mb-4">{reportError}</p>}
+    <AlertDialogFooter>
+      <AlertDialogCancel onClick={() => {
+        setReportDescription('');
+        setReportedQuestionId(null);
+        setReportError(null);
+        setReportType('');
+      }}>Cancel</AlertDialogCancel>
+      <AlertDialogAction onClick={handleReportQuestion}>Submit Report</AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+</>
     );
   }
 
@@ -302,7 +328,7 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
             onValueChange={(value) => {
               setQuestionType(value);
               setSelectedChapters([]);
-              setSelectedExamType(null);
+              setSelectedSuggestedExamTypes([]);
             }} 
             disabled={selectedSubject === null}
           >
@@ -369,11 +395,14 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
             disabled={!selectedSubject || !questionType || 
               (questionType === 'normal' && selectedChapters.length === 0) ||
               (questionType === 'suggested' && selectedSuggestedExamTypes.length === 0)}
+            className="w-full"
           >
             Start Exam
           </Button>
         </CardContent>
       </Card>
+
+      
     );
   }
 
@@ -384,13 +413,7 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
       <Card className="w-full max-w-2xl mx-auto mt-8 relative">
         <CardHeader className="pb-0">
           <CardTitle>Question {currentQuestion + 1} of {examQuestions.length}</CardTitle>
-          <Button
-            onClick={() => setShowReportDialog(true)}
-            variant="outline"
-            className="absolute top-3 right-4 border-red-500 text-red-500 hover:bg-red-100"
-          >
-            Report Question
-          </Button>
+          <Progress value={(currentQuestion / examQuestions.length) * 100} className="mt-2" />
         </CardHeader>
         <CardContent>
           {question ? (
@@ -414,6 +437,12 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
                   variant="outline"
                 >
                   Exit Exam
+                </Button>
+                <Button
+                  onClick={() => openReportDialog(question.id)}
+                  variant="outline"
+                >
+                  Report Question
                 </Button>
                 {currentQuestion === examQuestions.length - 1 ? (
                   <Button onClick={handleFinishExam}>Finish Exam</Button>
@@ -472,36 +501,51 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={showReportDialog} onOpenChange={setShowReportDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Report Question</AlertDialogTitle>
-            <AlertDialogDescription>
-              Please select the issue with this question and provide any additional details.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <Select onValueChange={setReportType} value={reportType}>
-            <SelectTrigger className="w-full mb-4">
-              <SelectValue placeholder="Select issue type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="question_wrong">The question is wrong</SelectItem>
-              <SelectItem value="options_wrong">The options are wrong</SelectItem>
-              <SelectItem value="other">Other</SelectItem>
-            </SelectContent>
-          </Select>
-          <Textarea
-            placeholder="Provide additional details about the issue"
-            value={reportDescription}
-            onChange={(e) => setReportDescription(e.target.value)}
-            className="mb-4"
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleReportQuestion}>Submit Report</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <AlertDialog open={showReportDialog} onOpenChange={(open) => {
+  if (!open) {
+    setReportDescription('');
+    setReportedQuestionId(null);
+    setReportError(null);
+    setReportType('');
+  }
+  setShowReportDialog(open);
+}}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Report Question</AlertDialogTitle>
+      <AlertDialogDescription>
+        Please select the type of issue and provide details about the problem with this question.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <Select onValueChange={setReportType} value={reportType}>
+      <SelectTrigger className="w-full mb-4">
+        <SelectValue placeholder="Select issue type" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="question_wrong">The question is wrong</SelectItem>
+        <SelectItem value="options_wrong">The options are wrong</SelectItem>
+        <SelectItem value="no_correct_answer">There's no correct answer</SelectItem>
+        <SelectItem value="other">Other issue</SelectItem>
+      </SelectContent>
+    </Select>
+    <Textarea
+      placeholder="Describe the issue with the question"
+      value={reportDescription}
+      onChange={(e) => setReportDescription(e.target.value)}
+      className="mb-4"
+    />
+    {reportError && <p className="text-red-500 mb-4">{reportError}</p>}
+    <AlertDialogFooter>
+      <AlertDialogCancel onClick={() => {
+        setReportDescription('');
+        setReportedQuestionId(null);
+        setReportError(null);
+        setReportType('');
+      }}>Cancel</AlertDialogCancel>
+      <AlertDialogAction onClick={handleReportQuestion}>Submit Report</AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
     </>
   );
 };
