@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Progress } from '@/components/ui/progress';
+import { Flag } from 'lucide-react';
 
 const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions }) => {
   const [selectedMajor, setSelectedMajor] = useState(null);
@@ -36,6 +37,8 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
   const [reportDescription, setReportDescription] = useState('');
   const [reportedQuestionId, setReportedQuestionId] = useState(null);
   const [reportError, setReportError] = useState(null);
+  const [flaggedQuestions, setFlaggedQuestions] = useState([]);
+  const [showFlaggedQuestions, setShowFlaggedQuestions] = useState(false);
 
   const filteredSubjects = subjects.filter(subject => 
     subject.major_id === selectedMajor && 
@@ -67,6 +70,14 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
 
     const shuffled = [...filtered].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, Math.min(numberOfQuestions, shuffled.length));
+  };
+
+  const goToFlaggedQuestion = (questionId) => {
+    const index = examQuestions.findIndex(q => q.id === questionId);
+    if (index !== -1) {
+      setCurrentQuestion(index);
+      setShowFlaggedQuestions(false);
+    }
   };
 
   const handleReportQuestion = async () => {
@@ -115,6 +126,32 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
     setShowReportDialog(true);
   };
 
+  const handleAnswerSelect = (questionId, answer) => {
+    setSelectedAnswers(prev => ({ ...prev, [questionId]: answer }));
+  };
+
+  const handleFlagQuestion = (questionId) => {
+    setFlaggedQuestions(prev => 
+      prev.includes(questionId) 
+        ? prev.filter(id => id !== questionId)
+        : [...prev, questionId]
+    );
+  };
+
+  const renderAvailableOptions = (question) => {
+    const options = ['option_1', 'option_2', 'option_3', 'option_4'].filter(option => question[option]);
+    return options.map((option, index) => (
+      <div key={index} className="flex items-center space-x-2 mb-2">
+        <RadioGroupItem value={question[option]} id={`option-${index}`} />
+        <Label htmlFor={`option-${index}`}>{question[option]}</Label>
+      </div>
+    ));
+  };
+
+  const canMoveToNextQuestion = () => {
+    return examMode === 'two-way' || selectedAnswers[examQuestions[currentQuestion].id];
+  };
+
   useEffect(() => {
     if (selectedSubject && questionType) {
       const shuffledQuestions = getShuffledQuestions();
@@ -125,10 +162,6 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
       }
     }
   }, [selectedSubject, numberOfQuestions, questionType, selectedChapters, selectedSuggestedExamTypes]);
-
-  const handleAnswerSelect = (questionId, answer) => {
-    setSelectedAnswers(prev => ({ ...prev, [questionId]: answer }));
-  };
 
   const handleSubmit = () => {
     setShowResults(true);
@@ -181,15 +214,6 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
     );
   };
 
-  const renderAvailableOptions = (question) => {
-    const options = ['option_1', 'option_2', 'option_3', 'option_4'].filter(option => question[option]);
-    return options.map((option, index) => (
-      <div key={index} className="flex items-center space-x-2 mb-2">
-        <RadioGroupItem value={question[option]} id={`option-${index}`} />
-        <Label htmlFor={`option-${index}`}>{question[option]}</Label>
-      </div>
-    ));
-  };
 
   if (showResults) {
     const score = calculateScore();
@@ -280,11 +304,19 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
   if (!examStarted) {
     return (
       <Card className="w-full max-w-2xl mx-auto mt-8">
-        <CardHeader>
-          <CardTitle>Select Exam Parameters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-4">Exam Mode: {examMode === 'one-way' ? 'One-Way' : 'Two-Way'}</p>
+      <CardHeader>
+        <CardTitle>Select Exam Parameters</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Select onValueChange={(value) => setExamMode(value)}>
+          <SelectTrigger className="w-full mb-4">
+            <SelectValue placeholder="Select Exam Mode" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="one-way">One-Way (Can't go back to previous questions)</SelectItem>
+            <SelectItem value="two-way">Two-Way (Can review and change answers)</SelectItem>
+          </SelectContent>
+        </Select>
           
           <Select onValueChange={(value) => setSelectedMajor(parseInt(value))}>
             <SelectTrigger className="w-full mb-4">
@@ -392,7 +424,7 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
 
           <Button 
             onClick={() => setExamStarted(true)} 
-            disabled={!selectedSubject || !questionType || 
+            disabled={!selectedSubject || !questionType || !examMode ||
               (questionType === 'normal' && selectedChapters.length === 0) ||
               (questionType === 'suggested' && selectedSuggestedExamTypes.length === 0)}
             className="w-full"
@@ -406,19 +438,61 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
     );
   }
 
+  if (showFlaggedQuestions) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto mt-8">
+        <CardHeader>
+          <CardTitle>Flagged Questions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {flaggedQuestions.length > 0 ? (
+            flaggedQuestions.map(questionId => {
+              const question = examQuestions.find(q => q.id === questionId);
+              return (
+                <Button
+                  key={questionId}
+                  onClick={() => goToFlaggedQuestion(questionId)}
+                  className="w-full mb-2 text-left"
+                >
+                  {question.question.substring(0, 50)}...
+                </Button>
+              );
+            })
+          ) : (
+            <p>No flagged questions.</p>
+          )}
+          <Button onClick={() => setShowFlaggedQuestions(false)} className="mt-4">
+            Back to Exam
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const question = examQuestions[currentQuestion];
 
   return (
     <>
-      <Card className="w-full max-w-2xl mx-auto mt-8 relative">
+        <Card className="w-full max-w-2xl mx-auto mt-8 relative">
         <CardHeader className="pb-0">
-          <CardTitle>Question {currentQuestion + 1} of {examQuestions.length}</CardTitle>
+          <CardTitle className="mb-4">Question {currentQuestion + 1} of {examQuestions.length}</CardTitle>
           <Progress value={(currentQuestion / examQuestions.length) * 100} className="mt-2" />
         </CardHeader>
         <CardContent>
           {question ? (
             <>
-              <p className="text-lg my-4">{question.question}</p>
+              <div className="flex justify-between items-center mb-4">
+                <p className="text-lg">{question.question}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleFlagQuestion(question.id)}
+                  className={flaggedQuestions.includes(question.id) ? 'bg-yellow-100' : ''}
+                >
+                  <Flag className={`w-4 h-4 mr-2 ${flaggedQuestions.includes(question.id) ? 'text-yellow-500' : 'text-gray-500'}`} />
+                  {flaggedQuestions.includes(question.id) ? 'Unflag' : 'Flag'}
+                </Button>
+              </div>
               {questionType === 'normal' && (
                 <p className="text-sm text-gray-500 mb-2">Chapter: {question.chapter}</p>
               )}
@@ -431,29 +505,50 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
               >
                 {renderAvailableOptions(question)}
               </RadioGroup>
-              <div className="flex justify-between mt-6">
-                <Button
-                  onClick={() => setShowExitConfirmation(true)}
-                  variant="outline"
-                >
-                  Exit Exam
-                </Button>
+              <div className="flex justify-between mt-6">               
+                  <Button
+                    onClick={() => setShowExitConfirmation(true)}
+                    variant="destructive"
+                    className="mb-2 "
+                  >
+                    Exit Exam
+                  </Button>    
+                {examMode === 'two-way' && (
+                  <Button
+                    onClick={() => setShowFlaggedQuestions(true)}
+                    variant="outline"
+                  >
+                    Review Flagged Questions
+                  </Button>
+                )}
                 <Button
                   onClick={() => openReportDialog(question.id)}
                   variant="outline"
+                  className="border-red-500 text-red-500 hover:bg-red-100 absolute top-4 right-4"
                 >
                   Report Question
                 </Button>
-                {currentQuestion === examQuestions.length - 1 ? (
-                  <Button onClick={handleFinishExam}>Finish Exam</Button>
-                ) : (
-                  <Button
-                    onClick={() => setCurrentQuestion(currentQuestion + 1)}
-                    disabled={examMode === 'one-way' && !selectedAnswers[question.id]}
-                  >
-                    Next
-                  </Button>
-                )}
+                <div className='flex'>
+                  {examMode === 'two-way' && currentQuestion > 0 && (
+                      <Button
+                        onClick={() => setCurrentQuestion(currentQuestion - 1)}
+                        variant="outline"
+                      >
+                        Previous
+                      </Button>
+                    )}
+                  {currentQuestion === examQuestions.length - 1 ? (
+                    <Button onClick={handleFinishExam}>Finish Exam</Button>
+                  ) : (
+                    <Button
+                      onClick={() => setCurrentQuestion(currentQuestion + 1)}
+                      disabled={!selectedAnswers[question.id]}
+                    >
+                      Next
+                    </Button>
+                  )}
+                </div>
+                
               </div>
             </>
           ) : (
