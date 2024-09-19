@@ -1,7 +1,8 @@
 // components/ExamApp.js
 
 'use client'
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { PiGraduationCapDuotone } from "react-icons/pi";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -45,7 +46,7 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
     subjectTypes.find(st => st.id === subject.subject_type_id)?.is_mandatory === isMandatory
   );
 
-  const getShuffledQuestions = () => {
+  const getShuffledQuestions = useCallback(() => {
     const questionPool = questionType === 'normal' ? questions : suggestedQuestions;
 
     if (!Array.isArray(questionPool) || questionPool.length === 0) {
@@ -70,7 +71,7 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
 
     const shuffled = [...filtered].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, Math.min(numberOfQuestions, shuffled.length));
-  };
+  }, [questionType, questions, suggestedQuestions, selectedSubject, selectedChapters, selectedSuggestedExamTypes, numberOfQuestions]);
 
   const goToFlaggedQuestion = (questionId) => {
     const index = examQuestions.findIndex(q => q.id === questionId);
@@ -161,7 +162,7 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
         setError(null);
       }
     }
-  }, [selectedSubject, numberOfQuestions, questionType, selectedChapters, selectedSuggestedExamTypes]);
+  }, [selectedSubject, numberOfQuestions, questionType, selectedChapters, selectedSuggestedExamTypes, getShuffledQuestions]);
 
   const handleSubmit = () => {
     setShowResults(true);
@@ -218,43 +219,45 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
   if (showResults) {
     const score = calculateScore();
     return (
-      <>
-      <Card className="w-full max-w-2xl mx-auto mt-8">
-        <CardHeader>
-          <CardTitle>Exam Results</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-lg font-semibold mb-4">
-            Your score: {score} out of {examQuestions.length}
-          </p>
-          <Progress value={(score / examQuestions.length) * 100} className="mb-6" />
-          {examQuestions.map((question, index) => (
-            <div key={question.id} className="mb-6 p-4 border rounded-lg">
-              <p className="text-lg font-semibold mb-2">Question {index + 1}: {question.question}</p>
-              <p className={`mb-1 ${selectedAnswers[question.id] === question.correct_answer ? 'text-green-600' : 'text-red-600'}`}>
-                Your answer: {selectedAnswers[question.id]}
-              </p>
-              <p className="text-green-600 mb-2">Correct answer: {question.correct_answer}</p>
-              <Button 
-                onClick={() => openReportDialog(question.id)} 
-                variant="outline" 
-                size="sm"
-                className="mt-2"
-              >
-                Report Wrong Answer
-              </Button>
-            </div>
-          ))}
-          <Button onClick={() => {
-            setShowResults(false);
-            setExamStarted(false);
-            setSelectedAnswers({});
-            setCurrentQuestion(0);
-          }} className="mt-4">
-            Start New Exam
-          </Button>
-        </CardContent>
-      </Card>
+      
+      <div className="min-h-screen bg-gradient-to-b from-blue-100 to-white flex items-center justify-center p-4">
+        <Card className="w-full max-w-2xl shadow-lg">
+          <CardHeader className="text-center">
+            <PiGraduationCapDuotone className="text-6xl text-blue-600 mx-auto mb-4" />
+            <CardTitle className="text-2xl font-bold text-gray-800">Exam Results</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-lg font-semibold mb-4">
+              Your score: {score} out of {examQuestions.length}
+            </p>
+            <Progress value={(score / examQuestions.length) * 100} className="mb-6" />
+            {examQuestions.map((question, index) => (
+              <div key={question.id} className="mb-6 p-4 border rounded-lg bg-white">
+                <p className="text-lg font-semibold mb-2">Question {index + 1}: {question.question}</p>
+                <p className={`mb-1 ${selectedAnswers[question.id] === question.correct_answer ? 'text-green-600' : 'text-red-600'}`}>
+                  Your answer: {selectedAnswers[question.id]}
+                </p>
+                <p className="text-green-600 mb-2">Correct answer: {question.correct_answer}</p>
+                <Button 
+                  onClick={() => openReportDialog(question.id)} 
+                  variant="outline" 
+                  size="sm"
+                  className="mt-2 border-blue-300 text-blue-600 hover:bg-blue-50"
+                >
+                  Report Wrong Answer
+                </Button>
+              </div>
+            ))}
+            <Button onClick={() => {
+              setShowResults(false);
+              setExamStarted(false);
+              setSelectedAnswers({});
+              setCurrentQuestion(0);
+            }} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition duration-300 ease-in-out transform hover:scale-105">
+              Start New Exam
+            </Button>
+          </CardContent>
+        </Card>
       <AlertDialog open={showReportDialog} onOpenChange={(open) => {
   if (!open) {
     setReportDescription('');
@@ -297,17 +300,19 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
     </AlertDialogFooter>
   </AlertDialogContent>
 </AlertDialog>
-</>
+      </div>
     );
   }
 
   if (!examStarted) {
     return (
-      <Card className="w-full max-w-2xl mx-auto mt-8">
-      <CardHeader>
-        <CardTitle>Select Exam Parameters</CardTitle>
-      </CardHeader>
-      <CardContent>
+      <div className="min-h-screen bg-gradient-to-b from-blue-100 to-white flex items-center justify-center p-4">
+      <Card className="w-full max-w-2xl shadow-lg">
+        <CardHeader className="text-center">
+          <PiGraduationCapDuotone className="text-6xl text-blue-600 mx-auto mb-4" />
+          <CardTitle className="text-2xl font-bold text-gray-800">Select Exam Parameters</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
         <Select onValueChange={(value) => setExamMode(value)}>
           <SelectTrigger className="w-full mb-4">
             <SelectValue placeholder="Select Exam Mode" />
@@ -422,77 +427,92 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
             disabled={!selectedSubject}
           />
 
-          <Button 
-            onClick={() => setExamStarted(true)} 
-            disabled={!selectedSubject || !questionType || !examMode ||
-              (questionType === 'normal' && selectedChapters.length === 0) ||
-              (questionType === 'suggested' && selectedSuggestedExamTypes.length === 0)}
-            className="w-full"
-          >
-            Start Exam
-          </Button>
-        </CardContent>
-      </Card>
-
-      
+            <Button 
+              onClick={() => setExamStarted(true)} 
+              disabled={!selectedSubject || !questionType || !examMode ||
+                (questionType === 'normal' && selectedChapters.length === 0) ||
+                (questionType === 'suggested' && selectedSuggestedExamTypes.length === 0)}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition duration-300 ease-in-out transform hover:scale-105"
+            >
+              Start Exam
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   if (showFlaggedQuestions) {
     return (
-      <Card className="w-full max-w-2xl mx-auto mt-8">
-        <CardHeader>
-          <CardTitle>Flagged Questions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {flaggedQuestions.length > 0 ? (
-            flaggedQuestions.map(questionId => {
-              const question = examQuestions.find(q => q.id === questionId);
-              return (
-                <Button
-                  key={questionId}
-                  onClick={() => goToFlaggedQuestion(questionId)}
-                  className="w-full mb-2 text-left"
-                >
-                  {question.question.substring(0, 50)}...
-                </Button>
-              );
-            })
-          ) : (
-            <p>No flagged questions.</p>
-          )}
-          <Button onClick={() => setShowFlaggedQuestions(false)} className="mt-4">
-            Back to Exam
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="min-h-screen bg-gradient-to-b from-blue-100 to-white flex items-center justify-center p-4">
+        <Card className="w-full max-w-2xl shadow-lg">
+          <CardHeader className="text-center">
+            <PiGraduationCapDuotone className="text-6xl text-blue-600 mx-auto mb-4" />
+            <CardTitle className="text-2xl font-bold text-gray-800">Flagged Questions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {flaggedQuestions.length > 0 ? (
+              flaggedQuestions.map(questionId => {
+                const question = examQuestions.find(q => q.id === questionId);
+                return (
+                  <Button
+                    key={questionId}
+                    onClick={() => goToFlaggedQuestion(questionId)}
+                    className="w-full mb-2 text-left bg-white hover:bg-blue-50 text-blue-600 border border-blue-300"
+                  >
+                    {question.question.substring(0, 50)}...
+                  </Button>
+                );
+              })
+            ) : (
+              <p className="text-center text-gray-600">No flagged questions.</p>
+            )}
+            <Button onClick={() => setShowFlaggedQuestions(false)} className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition duration-300 ease-in-out transform hover:scale-105">
+              Back to Exam
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   const question = examQuestions[currentQuestion];
 
   return (
-    <>
-        <Card className="w-full max-w-2xl mx-auto mt-8 relative">
-        <CardHeader className="pb-0">
-          <CardTitle className="mb-4">Question {currentQuestion + 1} of {examQuestions.length}</CardTitle>
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <Card className="w-full max-w-2xl shadow-lg relative bg-gradient-to-b from-blue-100 to-white">
+        <CardHeader className="text-center pb-0">
+          <CardTitle className="text-2xl font-bold text-gray-800 mb-4">
+            Question {currentQuestion + 1} of {examQuestions.length}
+          </CardTitle>
           <Progress value={(currentQuestion / examQuestions.length) * 100} className="mt-2" />
         </CardHeader>
         <CardContent>
           {question ? (
             <>
               <div className="flex justify-between items-center mb-4">
-                <p className="text-lg">{question.question}</p>
+                <p className="text-lg text-gray-800 flex-grow">{question.question}</p>
                 <Button
+                  onClick={() => openReportDialog(question.id)}
                   variant="outline"
-                  size="sm"
-                  onClick={() => handleFlagQuestion(question.id)}
-                  className={flaggedQuestions.includes(question.id) ? 'bg-yellow-100' : ''}
+                  className="border-red-500 text-red-500 hover:bg-red-100 ml-2 hidden sm:inline-flex"
                 >
-                  <Flag className={`w-4 h-4 mr-2 ${flaggedQuestions.includes(question.id) ? 'text-yellow-500' : 'text-gray-500'}`} />
-                  {flaggedQuestions.includes(question.id) ? 'Unflag' : 'Flag'}
+                  Report Question
                 </Button>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleFlagQuestion(question.id)}
+                className={`w-full mb-4 ${flaggedQuestions.includes(question.id) ? 'bg-yellow-100' : ''} border-blue-300 text-blue-600 hover:bg-blue-50`}
+              >
+                <Flag
+                  className={`w-4 h-4 mr-2 ${
+                    flaggedQuestions.includes(question.id) ? 'text-yellow-500' : 'text-gray-500'
+                  }`}
+                />
+                Flag
+              </Button>
               {questionType === 'normal' && (
                 <p className="text-sm text-gray-500 mb-2">Chapter: {question.chapter}</p>
               )}
@@ -502,147 +522,142 @@ const ExamApp = ({ majors, subjectTypes, subjects, questions, suggestedQuestions
               <RadioGroup
                 value={selectedAnswers[question.id] || ''}
                 onValueChange={(value) => handleAnswerSelect(question.id, value)}
+                className="space-y-2 mb-4"
               >
                 {renderAvailableOptions(question)}
               </RadioGroup>
-              <div className="flex justify-between mt-6">               
-                  <Button
-                    onClick={() => setShowExitConfirmation(true)}
-                    variant="destructive"
-                    className="mb-2 "
-                  >
-                    Exit Exam
-                  </Button>    
-                {examMode === 'two-way' && (
-                  <Button
-                    onClick={() => setShowFlaggedQuestions(true)}
-                    variant="outline"
-                  >
-                    Review Flagged Questions
+  
+              <div className="flex flex-col space-y-2">
+                <Button
+                  onClick={() => setCurrentQuestion(currentQuestion + 1)}
+                  disabled={!selectedAnswers[question.id]}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition duration-300 ease-in-out transform hover:scale-105"
+                >
+                  Next
+                </Button>
+                {currentQuestion > 0 && (
+                  <Button onClick={() => setCurrentQuestion(currentQuestion - 1)} variant="outline" className="w-full border-blue-300 text-blue-600 hover:bg-blue-50">
+                    Previous
                   </Button>
                 )}
-                <Button
-                  onClick={() => openReportDialog(question.id)}
-                  variant="outline"
-                  className="border-red-500 text-red-500 hover:bg-red-100 absolute top-4 right-4"
-                >
-                  Report Question
+                <Button onClick={() => setShowFlaggedQuestions(true)} variant="outline" className="w-full border-blue-300 text-blue-600 hover:bg-blue-50">
+                  Review Flagged Questions
                 </Button>
-                <div className='flex'>
-                  {examMode === 'two-way' && currentQuestion > 0 && (
-                      <Button
-                        onClick={() => setCurrentQuestion(currentQuestion - 1)}
-                        variant="outline"
-                      >
-                        Previous
-                      </Button>
-                    )}
-                  {currentQuestion === examQuestions.length - 1 ? (
-                    <Button onClick={handleFinishExam}>Finish Exam</Button>
-                  ) : (
-                    <Button
-                      onClick={() => setCurrentQuestion(currentQuestion + 1)}
-                      disabled={!selectedAnswers[question.id]}
-                    >
-                      Next
-                    </Button>
-                  )}
-                </div>
-                
+                <Button onClick={() => setShowExitConfirmation(true)} variant="destructive" className="w-full bg-red-600 hover:bg-red-700 text-white">
+                  Exit Exam
+                </Button>
               </div>
+  
+              <Button
+                onClick={() => openReportDialog(question.id)}
+                variant="outline"
+                className="border-red-500 text-red-500 hover:bg-red-100 mt-4 w-full sm:hidden"
+              >
+                Report Question
+              </Button>
             </>
           ) : (
-            <p>No questions available for the selected subject.</p>
+            <p className="text-center text-gray-600">No questions available for the selected subject.</p>
           )}
         </CardContent>
       </Card>
-
+  
+      {/* Exit Confirmation Dialog */}
       <AlertDialog open={showExitConfirmation} onOpenChange={setShowExitConfirmation}>
-        <AlertDialogContent>
+        <AlertDialogContent className="bg-white">
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure you want to exit the exam?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Your progress will be lost if you exit now.
-            </AlertDialogDescription>
+            <AlertDialogTitle className="text-2xl font-bold text-gray-800">Are you sure you want to exit the exam?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600">Your progress will be lost if you exit now.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => {
-              setExamStarted(false);
-              setShowExitConfirmation(false);
-              setSelectedAnswers({});
-              setCurrentQuestion(0);
-            }}>
+            <AlertDialogCancel className="border-blue-300 text-blue-600 hover:bg-blue-50">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setExamStarted(false);
+                setShowExitConfirmation(false);
+                setSelectedAnswers({});
+                setCurrentQuestion(0);
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
               Exit Exam
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
+  
+      {/* Finish Exam Confirmation Dialog */}
       <AlertDialog open={showFinishConfirmation} onOpenChange={setShowFinishConfirmation}>
-        <AlertDialogContent>
+        <AlertDialogContent className="bg-white">
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure you want to finish the exam?</AlertDialogTitle>
-            <AlertDialogDescription>
-              You won't be able to change your answers after finishing.
-            </AlertDialogDescription>
+            <AlertDialogTitle className="text-2xl font-bold text-gray-800">Are you sure you want to finish the exam?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600">You won't be able to change your answers after finishing.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmFinishExam}>
-              Finish Exam
-            </AlertDialogAction>
+            <AlertDialogCancel className="border-blue-300 text-blue-600 hover:bg-blue-50">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmFinishExam} className="bg-blue-600 hover:bg-blue-700 text-white">Finish Exam</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <AlertDialog open={showReportDialog} onOpenChange={(open) => {
-  if (!open) {
-    setReportDescription('');
-    setReportedQuestionId(null);
-    setReportError(null);
-    setReportType('');
-  }
-  setShowReportDialog(open);
-}}>
-  <AlertDialogContent>
-    <AlertDialogHeader>
-      <AlertDialogTitle>Report Question</AlertDialogTitle>
-      <AlertDialogDescription>
-        Please select the type of issue and provide details about the problem with this question.
-      </AlertDialogDescription>
-    </AlertDialogHeader>
-    <Select onValueChange={setReportType} value={reportType}>
-      <SelectTrigger className="w-full mb-4">
-        <SelectValue placeholder="Select issue type" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="question_wrong">The question is wrong</SelectItem>
-        <SelectItem value="options_wrong">The options are wrong</SelectItem>
-        <SelectItem value="no_correct_answer">There's no correct answer</SelectItem>
-        <SelectItem value="other">Other issue</SelectItem>
-      </SelectContent>
-    </Select>
-    <Textarea
-      placeholder="Describe the issue with the question"
-      value={reportDescription}
-      onChange={(e) => setReportDescription(e.target.value)}
-      className="mb-4"
-    />
-    {reportError && <p className="text-red-500 mb-4">{reportError}</p>}
-    <AlertDialogFooter>
-      <AlertDialogCancel onClick={() => {
-        setReportDescription('');
-        setReportedQuestionId(null);
-        setReportError(null);
-        setReportType('');
-      }}>Cancel</AlertDialogCancel>
-      <AlertDialogAction onClick={handleReportQuestion}>Submit Report</AlertDialogAction>
-    </AlertDialogFooter>
-  </AlertDialogContent>
-</AlertDialog>
-    </>
+  
+      {/* Report Question Dialog */}
+      <AlertDialog
+        open={showReportDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReportDescription('');
+            setReportedQuestionId(null);
+            setReportError(null);
+            setReportType('');
+          }
+          setShowReportDialog(open);
+        }}
+      >
+        <AlertDialogContent className="bg-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-2xl font-bold text-gray-800">Report Question</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600">
+              Please select the type of issue and provide details about the problem with this question.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Select onValueChange={setReportType} value={reportType}>
+            <SelectTrigger className="w-full mb-4 border-blue-300 text-blue-600 hover:border-blue-400">
+              <SelectValue placeholder="Select issue type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="question_wrong">The question is wrong</SelectItem>
+              <SelectItem value="options_wrong">The options are wrong</SelectItem>
+              <SelectItem value="no_correct_answer">There's no correct answer</SelectItem>
+              <SelectItem value="other">Other issue</SelectItem>
+            </SelectContent>
+          </Select>
+          <Textarea
+            placeholder="Describe the issue with the question"
+            value={reportDescription}
+            onChange={(e) => setReportDescription(e.target.value)}
+            className="mb-4 border-blue-300 text-blue-600 focus:border-blue-400"
+          />
+          {reportError && <p className="text-red-500 mb-4">{reportError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setReportDescription('');
+                setReportedQuestionId(null);
+                setReportError(null);
+                setReportType('');
+              }}
+              className="border-blue-300 text-blue-600 hover:bg-blue-50"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleReportQuestion} className="bg-blue-600 hover:bg-blue-700 text-white">Submit Report</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
-};
+  
+    
+}  
 
 export default ExamApp;
